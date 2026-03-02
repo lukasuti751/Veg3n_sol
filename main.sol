@@ -262,3 +262,69 @@ contract Veg3n is ReentrancyGuard, Pausable, Ownable {
     function joinPath(uint256 pathId) external whenCompanionActive {
         if (pathId == 0 || pathId > pathCounter) revert V3G_PathNotFound();
         if (_userOnPath[msg.sender][pathId]) revert V3G_AlreadyOnPath();
+        Path storage p = paths[pathId];
+        if (!p.exists || block.number < p.startBlock || block.number > p.endBlock) revert V3G_PathNotActive();
+        _userOnPath[msg.sender][pathId] = true;
+        _pathParticipants[pathId].push(msg.sender);
+        p.participantCount++;
+        emit PathJoined(msg.sender, pathId, block.number);
+    }
+
+    function leavePath(uint256 pathId) external {
+        if (pathId == 0 || pathId > pathCounter) revert V3G_PathNotFound();
+        if (!_userOnPath[msg.sender][pathId]) revert V3G_NotOnPath();
+        _userOnPath[msg.sender][pathId] = false;
+        Path storage p = paths[pathId];
+        if (p.participantCount > 0) p.participantCount--;
+        emit PathLeft(msg.sender, pathId, block.number);
+    }
+
+    // -------------------------------------------------------------------------
+    // MEAL LOGGING
+    // -------------------------------------------------------------------------
+
+    function logMeal(bytes32 mealHash, bytes32 pathTag, uint8 mealType) external nonReentrant whenCompanionActive returns (uint256 mealId) {
+        if (mealHash == bytes32(0)) revert V3G_InvalidMealHash();
+        if (mealType < V3G_MEAL_BREAKFAST || mealType > V3G_MEAL_SNACK) revert V3G_InvalidMealType();
+        if (mealCounter >= V3G_MAX_MEALS) revert V3G_MaxMealsReached();
+        mealId = ++mealCounter;
+        mealLogs[mealId] = MealLog({
+            user: msg.sender,
+            mealHash: mealHash,
+            pathTag: pathTag,
+            loggedAtBlock: block.number,
+            mealType: mealType,
+            active: true
+        });
+        _mealIdsByUser[msg.sender].push(mealId);
+        _allMealIds.push(mealId);
+        pathTagMealCount[pathTag]++;
+        userPathTagMealCount[msg.sender][pathTag]++;
+        _updateStreak(msg.sender);
+        emit MealLogged(mealId, msg.sender, mealHash, pathTag, block.number, mealType);
+    }
+
+    function _updateStreak(address user) internal {
+        uint256 prevBlock = lastLogBlock[user];
+        uint256 current = block.number;
+        if (prevBlock == 0) {
+            dailyStreak[user] = 1;
+        } else {
+            uint256 blocksSince = current - prevBlock;
+            if (blocksSince <= 6500) dailyStreak[user] += 1;
+            else dailyStreak[user] = 1;
+        }
+        lastLogBlock[user] = current;
+        emit DailyStreakUpdated(user, dailyStreak[user], current);
+    }
+
+    function batchLogMeals(
+        bytes32[] calldata mealHashes,
+        bytes32[] calldata pathTags,
+        uint8[] calldata mealTypes
+    ) external nonReentrant whenCompanionActive returns (uint256[] memory mealIds) {
+        uint256 n = mealHashes.length;
+        if (n != pathTags.length || n != mealTypes.length) revert V3G_ArrayLengthMismatch();
+        if (n == 0) revert V3G_ZeroBatchSize();
+        if (n > V3G_MAX_BATCH_MEALS) revert V3G_BatchTooLarge();
+        if (mealCounter + n > V3G_MAX_MEALS) revert V3G_MaxMealsReached();
