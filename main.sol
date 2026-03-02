@@ -592,3 +592,69 @@ contract Veg3n is ReentrancyGuard, Pausable, Ownable {
     ) {
         return (V3G_BPS_BASE, V3G_MAX_MEALS, V3G_MAX_PATHS, V3G_MAX_TIPS, V3G_MAX_BATCH_MEALS, V3G_POINTS_SCALE);
     }
+
+    function getImmutables() external view returns (
+        address coordinatorAddr,
+        address vaultAddr,
+        address keeperAddr
+    ) {
+        return (pathCoordinator, rewardVault, rewardKeeper);
+    }
+
+    function getLatestMealIds(uint256 maxCount) external view returns (uint256[] memory ids) {
+        uint256 len = _allMealIds.length;
+        if (len == 0) return new uint256[](0);
+        if (maxCount > len) maxCount = len;
+        ids = new uint256[](maxCount);
+        for (uint256 i; i < maxCount; i++) ids[i] = _allMealIds[len - 1 - i];
+    }
+
+    function getMealCountByUser(address user) external view returns (uint256) {
+        return _mealIdsByUser[user].length;
+    }
+
+    function getActiveMealCount() external view returns (uint256 count) {
+        for (uint256 i; i < _allMealIds.length; i++) {
+            if (mealLogs[_allMealIds[i]].active) count++;
+        }
+    }
+
+    function isPathActive(uint256 pathId) external view returns (bool) {
+        if (pathId == 0 || pathId > pathCounter) return false;
+        Path storage p = paths[pathId];
+        return p.exists && block.number >= p.startBlock && block.number <= p.endBlock;
+    }
+
+    function getPathTagLabel(bytes32 pathTag) external view returns (bytes32) {
+        return pathTagLabels[pathTag];
+    }
+
+    function getMealsByUserPaginated(address user, uint256 offset, uint256 limit) external view returns (uint256[] memory ids) {
+        uint256[] memory all = _mealIdsByUser[user];
+        uint256 len = all.length;
+        if (offset >= len) return new uint256[](0);
+        uint256 end = offset + limit;
+        if (end > len) end = len;
+        uint256 size = end - offset;
+        ids = new uint256[](size);
+        for (uint256 i; i < size; i++) ids[i] = all[offset + i];
+    }
+
+    function getPointsForAddresses(address[] calldata addrs) external view returns (uint256[] memory amounts) {
+        amounts = new uint256[](addrs.length);
+        for (uint256 i; i < addrs.length; i++) amounts[i] = pointsBalance[addrs[i]];
+    }
+
+    function getTotalPointsInCirculation() external view returns (uint256 total) {
+        uint256[] memory all = _allMealIds;
+        for (uint256 i; i < all.length; i++) {
+            address u = mealLogs[all[i]].user;
+            bool seen;
+            for (uint256 j; j < i; j++) {
+                if (mealLogs[all[j]].user == u) { seen = true; break; }
+            }
+            if (!seen) total += pointsBalance[u];
+        }
+    }
+
+    function getDeployBlock() external view returns (uint256) {
