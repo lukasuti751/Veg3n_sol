@@ -526,3 +526,69 @@ contract Veg3n is ReentrancyGuard, Pausable, Ownable {
         for (uint256 i; i < _pathIds.length; i++) {
             Path storage p = paths[_pathIds[i]];
             if (p.exists && block.number >= p.startBlock && block.number <= p.endBlock) active[j++] = _pathIds[i];
+        }
+        return active;
+    }
+
+    function getMealsInBlockRange(uint256 fromBlock, uint256 toBlock) external view returns (uint256[] memory ids) {
+        if (fromBlock > toBlock) revert V3G_InvalidBlockRange();
+        uint256[] memory all = _allMealIds;
+        uint256 count;
+        for (uint256 i; i < all.length; i++) {
+            MealLog storage m = mealLogs[all[i]];
+            if (m.active && m.loggedAtBlock >= fromBlock && m.loggedAtBlock <= toBlock) count++;
+        }
+        ids = new uint256[](count);
+        uint256 j;
+        for (uint256 i; i < all.length; i++) {
+            MealLog storage m = mealLogs[all[i]];
+            if (m.active && m.loggedAtBlock >= fromBlock && m.loggedAtBlock <= toBlock) ids[j++] = all[i];
+        }
+    }
+
+    function getMealsPaginated(uint256 offset, uint256 limit) external view returns (
+        uint256[] memory ids,
+        address[] memory users,
+        bytes32[] memory mealHashes,
+        bool[] memory activeFlags
+    ) {
+        uint256 len = _allMealIds.length;
+        if (offset >= len) {
+            return (new uint256[](0), new address[](0), new bytes32[](0), new bool[](0));
+        }
+        uint256 end = offset + limit;
+        if (end > len) end = len;
+        uint256 size = end - offset;
+        ids = new uint256[](size);
+        users = new address[](size);
+        mealHashes = new bytes32[](size);
+        activeFlags = new bool[](size);
+        for (uint256 i; i < size;) {
+            uint256 id = _allMealIds[offset + i];
+            ids[i] = id;
+            MealLog storage m = mealLogs[id];
+            users[i] = m.user;
+            mealHashes[i] = m.mealHash;
+            activeFlags[i] = m.active;
+            unchecked { ++i; }
+        }
+    }
+
+    function getTipIds() external view returns (uint256[] memory) {
+        return _tipIds;
+    }
+
+    function getCompanionDomain() external view returns (bytes32) {
+        return companionDomain;
+    }
+
+    function getConstants() external pure returns (
+        uint256 bpsBase,
+        uint256 maxMeals,
+        uint256 maxPaths,
+        uint256 maxTips,
+        uint256 maxBatchMeals,
+        uint256 pointsScale
+    ) {
+        return (V3G_BPS_BASE, V3G_MAX_MEALS, V3G_MAX_PATHS, V3G_MAX_TIPS, V3G_MAX_BATCH_MEALS, V3G_POINTS_SCALE);
+    }
