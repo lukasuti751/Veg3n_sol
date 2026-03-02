@@ -130,3 +130,69 @@ contract Veg3n is ReentrancyGuard, Pausable, Ownable {
 
     struct MealLog {
         address user;
+        bytes32 mealHash;
+        bytes32 pathTag;
+        uint256 loggedAtBlock;
+        uint8 mealType;
+        bool active;
+    }
+
+    struct Path {
+        bytes32 pathTag;
+        uint256 startBlock;
+        uint256 endBlock;
+        uint256 participantCount;
+        bool exists;
+    }
+
+    struct UserGoal {
+        bytes32 goalHash;
+        uint256 targetValue;
+        uint256 setAtBlock;
+    }
+
+    uint256 public mealCounter;
+    uint256 public pathCounter;
+    uint256 public tipCounter;
+    uint256 public pointsPerMeal;
+    bool public companionPaused;
+
+    mapping(uint256 => MealLog) public mealLogs;
+    mapping(uint256 => Path) public paths;
+    mapping(uint256 => bytes32) public tips;
+    mapping(address => uint256) public pointsBalance;
+    mapping(address => uint256) public dailyStreak;
+    mapping(address => uint256) public lastLogBlock;
+    mapping(address => uint256[]) private _mealIdsByUser;
+    mapping(uint256 => address[]) private _pathParticipants;
+    mapping(address => mapping(uint256 => bool)) private _userOnPath;
+    mapping(address => UserGoal) public userGoals;
+    mapping(bytes32 => bytes32) public pathTagLabels;
+    mapping(bytes32 => uint256) public pathTagMealCount;
+    mapping(address => mapping(bytes32 => uint256)) public userPathTagMealCount;
+    mapping(uint256 => uint256) public pathMealCount;
+    uint256 public dailySnapshotCounter;
+    struct DailySnapshot {
+        address user;
+        uint256 dayBlock;
+        uint256 mealCount;
+        uint256 pointsEarned;
+        bool exists;
+    }
+    mapping(uint256 => DailySnapshot) public dailySnapshots;
+    mapping(address => uint256[]) private _snapshotIdsByUser;
+    uint256[] private _allMealIds;
+    uint256[] private _pathIds;
+    uint256[] private _tipIds;
+    bytes32[] private _pathTagsRegistered;
+    uint256 private _reentrancyLock;
+
+    // -------------------------------------------------------------------------
+    // MODIFIERS
+    // -------------------------------------------------------------------------
+
+    modifier whenCompanionActive() {
+        if (companionPaused) revert V3G_CompanionPaused();
+        _;
+    }
+
