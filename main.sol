@@ -328,3 +328,69 @@ contract Veg3n is ReentrancyGuard, Pausable, Ownable {
         if (n == 0) revert V3G_ZeroBatchSize();
         if (n > V3G_MAX_BATCH_MEALS) revert V3G_BatchTooLarge();
         if (mealCounter + n > V3G_MAX_MEALS) revert V3G_MaxMealsReached();
+        mealIds = new uint256[](n);
+        for (uint256 i; i < n;) {
+            if (mealHashes[i] == bytes32(0)) revert V3G_InvalidMealHash();
+            if (mealTypes[i] < V3G_MEAL_BREAKFAST || mealTypes[i] > V3G_MEAL_SNACK) revert V3G_InvalidMealType();
+            uint256 mealId = ++mealCounter;
+            mealLogs[mealId] = MealLog({
+                user: msg.sender,
+                mealHash: mealHashes[i],
+                pathTag: pathTags[i],
+                loggedAtBlock: block.number,
+                mealType: mealTypes[i],
+                active: true
+            });
+            mealIds[i] = mealId;
+            _mealIdsByUser[msg.sender].push(mealId);
+            _allMealIds.push(mealId);
+            pathTagMealCount[pathTags[i]]++;
+            userPathTagMealCount[msg.sender][pathTags[i]]++;
+            emit MealLogged(mealId, msg.sender, mealHashes[i], pathTags[i], block.number, mealTypes[i]);
+            unchecked { ++i; }
+        }
+        _updateStreak(msg.sender);
+        emit BatchMealsLogged(mealIds, msg.sender, block.number);
+    }
+
+    // -------------------------------------------------------------------------
+    // GOALS
+    // -------------------------------------------------------------------------
+
+    function setGoal(bytes32 goalHash, uint256 targetValue) external whenCompanionActive {
+        if (goalHash == bytes32(0)) revert V3G_InvalidMealHash();
+        UserGoal storage g = userGoals[msg.sender];
+        uint256 prev = g.targetValue;
+        g.goalHash = goalHash;
+        g.targetValue = targetValue;
+        g.setAtBlock = block.number;
+        if (prev == 0) emit GoalSet(msg.sender, goalHash, targetValue, block.number);
+        else emit GoalUpdated(msg.sender, goalHash, prev, targetValue, block.number);
+    }
+
+    // -------------------------------------------------------------------------
+    // POINTS
+    // -------------------------------------------------------------------------
+
+    function awardPoints(address user, uint256 amount) external onlyRewardKeeper nonReentrant {
+        if (user == address(0)) revert V3G_ZeroAddress();
+        if (amount == 0) revert V3G_ZeroAmount();
+        pointsBalance[user] += amount;
+        emit PointsAwarded(user, amount, pointsBalance[user], block.number);
+    }
+
+    function awardPointsForMeal(uint256 mealId) external onlyRewardKeeper nonReentrant {
+        if (mealId == 0 || mealId > mealCounter) revert V3G_MealNotFound();
+        MealLog storage m = mealLogs[mealId];
+        if (!m.active) revert V3G_MealNotFound();
+        pointsBalance[m.user] += pointsPerMeal;
+        emit PointsAwarded(m.user, pointsPerMeal, pointsBalance[m.user], block.number);
+    }
+
+    function redeemPoints(uint256 amount, bytes32 reasonHash) external nonReentrant {
+        if (amount == 0) revert V3G_ZeroAmount();
+        if (pointsBalance[msg.sender] < amount) revert V3G_InsufficientPoints();
+        pointsBalance[msg.sender] -= amount;
+        emit PointsRedeemed(msg.sender, amount, reasonHash, block.number);
+    }
+
