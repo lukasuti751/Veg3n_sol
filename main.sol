@@ -460,3 +460,69 @@ contract Veg3n is ReentrancyGuard, Pausable, Ownable {
         bytes32 pathTag,
         uint256 loggedAtBlock,
         uint8 mealType,
+        bool active
+    ) {
+        if (mealId == 0 || mealId > mealCounter) revert V3G_MealNotFound();
+        MealLog storage m = mealLogs[mealId];
+        return (m.user, m.mealHash, m.pathTag, m.loggedAtBlock, m.mealType, m.active);
+    }
+
+    function getMealIds() external view returns (uint256[] memory) {
+        return _allMealIds;
+    }
+
+    function getMealIdsByUser(address user) external view returns (uint256[] memory) {
+        return _mealIdsByUser[user];
+    }
+
+    function getPath(uint256 pathId) external view returns (
+        bytes32 pathTag,
+        uint256 startBlock,
+        uint256 endBlock,
+        uint256 participantCount,
+        bool exists
+    ) {
+        if (pathId == 0 || pathId > pathCounter) revert V3G_PathNotFound();
+        Path storage p = paths[pathId];
+        return (p.pathTag, p.startBlock, p.endBlock, p.participantCount, p.exists);
+    }
+
+    function getPathIds() external view returns (uint256[] memory) {
+        return _pathIds;
+    }
+
+    function isUserOnPath(address user, uint256 pathId) external view returns (bool) {
+        return _userOnPath[user][pathId];
+    }
+
+    function getCompanionDigest() external view returns (
+        uint256 totalMeals,
+        uint256 totalPaths,
+        uint256 totalTips,
+        uint256 deployBlockNum,
+        bool paused
+    ) {
+        return (mealCounter, pathCounter, tipCounter, deployBlock, companionPaused);
+    }
+
+    function getTip(uint256 tipId) external view returns (bytes32) {
+        if (tipId == 0 || tipId > tipCounter) revert V3G_TipNotFound();
+        return tips[tipId];
+    }
+
+    function getPathParticipants(uint256 pathId) external view returns (address[] memory) {
+        if (pathId == 0 || pathId > pathCounter) revert V3G_PathNotFound();
+        return _pathParticipants[pathId];
+    }
+
+    function getActivePathIds() external view returns (uint256[] memory) {
+        uint256 count;
+        for (uint256 i; i < _pathIds.length; i++) {
+            Path storage p = paths[_pathIds[i]];
+            if (p.exists && block.number >= p.startBlock && block.number <= p.endBlock) count++;
+        }
+        uint256[] memory active = new uint256[](count);
+        uint256 j;
+        for (uint256 i; i < _pathIds.length; i++) {
+            Path storage p = paths[_pathIds[i]];
+            if (p.exists && block.number >= p.startBlock && block.number <= p.endBlock) active[j++] = _pathIds[i];
