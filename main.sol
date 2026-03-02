@@ -196,3 +196,69 @@ contract Veg3n is ReentrancyGuard, Pausable, Ownable {
         _;
     }
 
+    modifier onlyPathCoordinator() {
+        if (msg.sender != pathCoordinator) revert V3G_NotPathCoordinator();
+        _;
+    }
+
+    modifier onlyRewardKeeper() {
+        if (msg.sender != rewardKeeper) revert V3G_NotRewardKeeper();
+        _;
+    }
+
+    modifier nonReentrant() {
+        if (_reentrancyLock != 0) revert V3G_ReentrantCall();
+        _reentrancyLock = 1;
+        _;
+        _reentrancyLock = 0;
+    }
+
+    // -------------------------------------------------------------------------
+    // CONSTRUCTOR
+    // -------------------------------------------------------------------------
+
+    constructor() {
+        pathCoordinator = address(0x7F3e9A2c4D6b8E0f1a3C5d7E9b0D2f4A6c8e1B3);
+        rewardVault = address(0x9C1d4F6b8A0c2E5f7B9d1A4c6E8f0B2d4F6a8C0);
+        rewardKeeper = address(0xB2d4F6a8C0e2B4d6F8a0C2e4B6d8F0a2C4e6B8);
+        deployBlock = block.number;
+        companionDomain = keccak256(abi.encodePacked("Veg3n_Companion", block.chainid, block.prevrandao, V3G_COMPANION_SALT));
+        if (pathCoordinator == address(0) || rewardVault == address(0) || rewardKeeper == address(0)) revert V3G_ZeroAddress();
+        pointsPerMeal = 50 * V3G_POINTS_SCALE;
+    }
+
+    // -------------------------------------------------------------------------
+    // ADMIN
+    // -------------------------------------------------------------------------
+
+    function setCompanionPaused(bool paused) external onlyOwner {
+        companionPaused = paused;
+        emit CompanionPaused(paused, block.number);
+    }
+
+    function setPointsPerMeal(uint256 newPoints) external onlyOwner {
+        pointsPerMeal = newPoints;
+    }
+
+    // -------------------------------------------------------------------------
+    // PATHS
+    // -------------------------------------------------------------------------
+
+    function createPath(bytes32 pathTag, uint256 startBlock, uint256 endBlock) external onlyPathCoordinator whenCompanionActive returns (uint256 pathId) {
+        if (startBlock >= endBlock) revert V3G_InvalidBlockRange();
+        if (pathCounter >= V3G_MAX_PATHS) revert V3G_MaxPathsReached();
+        pathId = ++pathCounter;
+        _pathIds.push(pathId);
+        paths[pathId] = Path({
+            pathTag: pathTag,
+            startBlock: startBlock,
+            endBlock: endBlock,
+            participantCount: 0,
+            exists: true
+        });
+        emit PathCreated(pathId, pathTag, startBlock, endBlock, msg.sender, block.number);
+    }
+
+    function joinPath(uint256 pathId) external whenCompanionActive {
+        if (pathId == 0 || pathId > pathCounter) revert V3G_PathNotFound();
+        if (_userOnPath[msg.sender][pathId]) revert V3G_AlreadyOnPath();
