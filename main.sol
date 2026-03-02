@@ -394,3 +394,69 @@ contract Veg3n is ReentrancyGuard, Pausable, Ownable {
         emit PointsRedeemed(msg.sender, amount, reasonHash, block.number);
     }
 
+    // -------------------------------------------------------------------------
+    // TIPS (AI healthy eating tips)
+    // -------------------------------------------------------------------------
+
+    function recordTip(bytes32 tipHash) external onlyPathCoordinator whenCompanionActive returns (uint256 tipId) {
+        if (tipHash == bytes32(0)) revert V3G_InvalidMealHash();
+        if (tipCounter >= V3G_MAX_TIPS) revert V3G_MaxTipsReached();
+        tipId = ++tipCounter;
+        tips[tipId] = tipHash;
+        _tipIds.push(tipId);
+        emit TipRecorded(tipId, tipHash, msg.sender, block.number);
+    }
+
+    function setPathTagLabel(bytes32 pathTag, bytes32 labelHash) external onlyPathCoordinator {
+        if (labelHash == bytes32(0)) revert V3G_InvalidLabelHash();
+        pathTagLabels[pathTag] = labelHash;
+        if (pathTagMealCount[pathTag] == 0) _pathTagsRegistered.push(pathTag);
+        emit PathTagLabelSet(pathTag, labelHash, block.number);
+    }
+
+    function recordDailySnapshot(address user, uint256 dayBlock, uint256 mealCount, uint256 pointsEarned) external onlyRewardKeeper returns (uint256 snapshotId) {
+        if (dailySnapshotCounter >= V3G_MAX_DAILY_SNAPSHOTS) return 0;
+        snapshotId = ++dailySnapshotCounter;
+        dailySnapshots[snapshotId] = DailySnapshot({
+            user: user,
+            dayBlock: dayBlock,
+            mealCount: mealCount,
+            pointsEarned: pointsEarned,
+            exists: true
+        });
+        _snapshotIdsByUser[user].push(snapshotId);
+    }
+
+    function removeMeal(uint256 mealId) external {
+        if (mealId == 0 || mealId > mealCounter) revert V3G_MealNotFound();
+        MealLog storage m = mealLogs[mealId];
+        if (!m.active) revert V3G_MealAlreadyRemoved();
+        if (m.user != msg.sender && msg.sender != rewardKeeper) revert V3G_NotMealUser();
+        m.active = false;
+        emit MealRemoved(mealId, msg.sender, block.number);
+    }
+
+    function batchAwardPoints(address[] calldata users, uint256[] calldata amounts) external onlyRewardKeeper nonReentrant {
+        uint256 n = users.length;
+        if (n != amounts.length) revert V3G_ArrayLengthMismatch();
+        if (n == 0) revert V3G_ZeroBatchSize();
+        for (uint256 i; i < n;) {
+            if (users[i] != address(0) && amounts[i] > 0) {
+                pointsBalance[users[i]] += amounts[i];
+                emit PointsAwarded(users[i], amounts[i], pointsBalance[users[i]], block.number);
+            }
+            unchecked { ++i; }
+        }
+        emit BatchPointsAwarded(users, amounts, block.number);
+    }
+
+    // -------------------------------------------------------------------------
+    // VIEWS
+    // -------------------------------------------------------------------------
+
+    function getMeal(uint256 mealId) external view returns (
+        address user,
+        bytes32 mealHash,
+        bytes32 pathTag,
+        uint256 loggedAtBlock,
+        uint8 mealType,
